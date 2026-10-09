@@ -33,7 +33,10 @@
           <p class="text-xs text-slate-500">Persistent destination trips</p>
         </div>
       </div>
-      <div class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">Leg <span id="trip-leg-indicator">1</span></div>
+      <div class="flex items-center gap-2">
+        <div id="final-destination-badge" class="text-xs bg-emerald-100 text-emerald-700 font-bold px-3 py-1 rounded-full">Final: not set</div>
+        <div class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">Leg <span id="trip-leg-indicator">1</span></div>
+      </div>
     </header>
 
     <div class="flex flex-1 overflow-hidden">
@@ -46,6 +49,11 @@
         <div>
           <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Destination</label>
           <input id="input-end" type="text" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" placeholder="End location" />
+        </div>
+
+        <div id="current-goal-box" class="rounded-xl border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+          <div class="font-bold uppercase tracking-wide text-slate-500">Current goal</div>
+          <div id="current-goal-label" class="mt-1 font-semibold text-slate-700">Not set</div>
         </div>
 
         <div class="flex gap-2">
@@ -98,6 +106,11 @@
         <div class="flex justify-between"><span>Steps</span><strong id="modal-steps">0</strong></div>
       </div>
 
+      <div class="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Leg summary</div>
+        <div id="leg-summary-list" class="mt-2 text-xs text-slate-700 space-y-1"></div>
+      </div>
+
       <label class="mt-4 flex items-center gap-3 bg-slate-50 rounded-xl p-3 border border-slate-200">
         <input id="keep-destination-toggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
         <span class="text-sm text-slate-700">Keep this destination for the next leg</span>
@@ -123,6 +136,11 @@
         <div class="flex justify-between"><span>Total time</span><strong id="final-total-time">00:00</strong></div>
         <div class="flex justify-between"><span>Total steps</span><strong id="final-total-steps">0</strong></div>
         <div class="flex justify-between"><span>Legs completed</span><strong id="final-leg-count">0</strong></div>
+      </div>
+
+      <div class="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-3">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Completed legs</div>
+        <div id="completed-legs-list" class="mt-2 text-xs text-slate-700 space-y-1"></div>
       </div>
 
       <div class="mt-4 space-y-2">
@@ -179,15 +197,19 @@
       modalDist: document.getElementById('modal-dist'),
       modalTime: document.getElementById('modal-time'),
       modalSteps: document.getElementById('modal-steps'),
+      legSummaryList: document.getElementById('leg-summary-list'),
       keepDestinationToggle: document.getElementById('keep-destination-toggle'),
       btnModalNextLeg: document.getElementById('btn-modal-next-leg'),
       btnModalNewDestination: document.getElementById('btn-modal-new-destination'),
+      finalDestinationBadge: document.getElementById('final-destination-badge'),
+      currentGoalLabel: document.getElementById('current-goal-label'),
       finalSummaryModal: document.getElementById('final-summary-modal'),
       finalDestinationName: document.getElementById('final-destination-name'),
       finalTotalDistance: document.getElementById('final-total-distance'),
       finalTotalTime: document.getElementById('final-total-time'),
       finalTotalSteps: document.getElementById('final-total-steps'),
       finalLegCount: document.getElementById('final-leg-count'),
+      completedLegsList: document.getElementById('completed-legs-list'),
       btnFinalSave: document.getElementById('btn-final-save'),
       btnFinalNewTrip: document.getElementById('btn-final-new-trip')
     };
@@ -253,6 +275,16 @@
       }
     }
 
+    function updateDestinationBadges() {
+      if (appState.finalDestination) {
+        DOM.finalDestinationBadge.textContent = 'Final: ' + appState.finalDestination.label;
+        DOM.currentGoalLabel.textContent = appState.currentLegEnd ? appState.currentLegEnd.label : appState.finalDestination.label;
+      } else {
+        DOM.finalDestinationBadge.textContent = 'Final: not set';
+        DOM.currentGoalLabel.textContent = 'Not set';
+      }
+    }
+
     function setStartLocation(coords, label) {
       appState.startCoords = coords;
       appState.startAddress = label;
@@ -274,6 +306,7 @@
       appState.currentLegEnd = { coords, label };
       appState.finalDestination = { coords, label };
       DOM.inputEnd.value = label;
+      updateDestinationBadges();
 
       if (endMarker) map.removeLayer(endMarker);
       endMarker = L.marker(coords, { icon: createEndIcon() }).addTo(map);
@@ -293,6 +326,7 @@
       if (endMarker) map.removeLayer(endMarker);
       routePolyline.setLatLngs([]);
       DOM.routeSummaryCard.classList.add('hidden');
+      updateDestinationBadges();
     }
 
     function toKm(value) {
@@ -462,6 +496,18 @@
       }
     }
 
+    function renderLegSummaryList() {
+      const currentLeg = appState.currentLegStart && appState.currentLegEnd
+        ? `Leg ${appState.legNumber}: ${appState.currentLegStart.label} → ${appState.currentLegEnd.label}`
+        : 'Ready for next leg';
+      DOM.legSummaryList.innerHTML = `
+        <div>${currentLeg}</div>
+        <div>Distance: ${toKm(appState.currentLegDistance)}</div>
+        <div>Time: ${formatDuration(appState.currentLegElapsedSeconds)}</div>
+        <div>Steps: ${Math.round(appState.currentLegDistance / 0.75).toLocaleString()}</div>
+      `;
+    }
+
     function showArrivalModal() {
       const distance = appState.currentLegDistance || getDistanceMeters(appState.startCoords, appState.currentLegEnd.coords);
       const mins = Math.floor(appState.currentLegElapsedSeconds / 60);
@@ -471,6 +517,7 @@
       DOM.modalTime.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
       DOM.modalSteps.textContent = Math.round(distance / 0.75).toLocaleString();
       DOM.keepDestinationToggle.checked = appState.keepDestinationForNextLeg;
+      renderLegSummaryList();
       DOM.arrivalModal.classList.remove('hidden');
       DOM.arrivalModal.classList.add('flex');
     }
@@ -478,6 +525,15 @@
     function hideArrivalModal() {
       DOM.arrivalModal.classList.add('hidden');
       DOM.arrivalModal.classList.remove('flex');
+    }
+
+    function renderCompletedLegsList() {
+      DOM.completedLegsList.innerHTML = appState.completedLegs.length
+        ? appState.completedLegs.map((leg, index) => `
+            <div>Leg ${index + 1}: ${leg.start.label} → ${leg.end.label}</div>
+            <div class="text-slate-500">${toKm(leg.distance)} • ${formatDuration(leg.time)} • ${leg.steps} steps</div>
+          `).join('')
+        : '<div>No completed legs yet.</div>';
     }
 
     function showFinalSummary() {
@@ -489,7 +545,8 @@
       DOM.finalTotalDistance.textContent = toKm(totalDistance);
       DOM.finalTotalTime.textContent = formatDuration(totalSeconds);
       DOM.finalTotalSteps.textContent = totalSteps.toLocaleString();
-      DOM.finalLegCount.textContent = appState.completedLegs.length + 1;
+      DOM.finalLegCount.textContent = String(appState.completedLegs.length + 1);
+      renderCompletedLegsList();
 
       DOM.finalSummaryModal.classList.remove('hidden');
       DOM.finalSummaryModal.classList.add('flex');
@@ -515,6 +572,13 @@
 
       appState.keepDestinationForNextLeg = DOM.keepDestinationToggle.checked;
       hideArrivalModal();
+
+      const reachedFinalDestination = appState.finalDestination && appState.currentLegEnd && appState.currentLegEnd.coords[0] === appState.finalDestination.coords[0] && appState.currentLegEnd.coords[1] === appState.finalDestination.coords[1];
+
+      if (reachedFinalDestination && appState.finalDestination) {
+        showFinalSummary();
+        return;
+      }
 
       if (appState.keepDestinationForNextLeg && appState.finalDestination) {
         appState.currentLegStart = appState.currentLegEnd;
@@ -546,6 +610,7 @@
         walkedPolyline.setLatLngs([]);
         DOM.btnStop.classList.add('hidden');
         DOM.btnStartPause.textContent = 'Start Walk';
+        updateDestinationBadges();
       } else {
         resetPlanner();
       }
@@ -583,6 +648,7 @@
       DOM.routeSummaryCard.classList.add('hidden');
       walkedPolyline.setLatLngs([]);
       routePolyline.setLatLngs([]);
+      updateDestinationBadges();
 
       if (startMarker) map.removeLayer(startMarker);
       if (endMarker) map.removeLayer(endMarker);
@@ -644,6 +710,7 @@
     });
 
     initMap();
+    updateDestinationBadges();
   </script>
 </body>
 </html>
