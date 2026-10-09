@@ -110,6 +110,28 @@
     </div>
   </div>
 
+  <div id="final-summary-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
+      <div class="flex justify-center mb-4">
+        <div class="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-3xl">🎉</div>
+      </div>
+      <h2 class="text-center text-2xl font-black text-slate-800">Trip Complete!</h2>
+      <p id="final-destination-name" class="text-center text-sm text-slate-500 mt-2">You reached your destination.</p>
+
+      <div class="mt-4 bg-slate-50 rounded-2xl p-3 text-sm space-y-2 border border-slate-200">
+        <div class="flex justify-between"><span>Total distance</span><strong id="final-total-distance">0.0 km</strong></div>
+        <div class="flex justify-between"><span>Total time</span><strong id="final-total-time">00:00</strong></div>
+        <div class="flex justify-between"><span>Total steps</span><strong id="final-total-steps">0</strong></div>
+        <div class="flex justify-between"><span>Legs completed</span><strong id="final-leg-count">0</strong></div>
+      </div>
+
+      <div class="mt-4 space-y-2">
+        <button id="btn-final-save" class="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-bold">Save trip</button>
+        <button id="btn-final-new-trip" class="w-full bg-slate-200 text-slate-800 py-2 rounded-xl font-semibold">Start a new trip</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const appState = {
       finalDestination: null,
@@ -135,7 +157,8 @@
       routeCoords: [],
       legNumber: 1,
       timerInterval: null,
-      watchId: null
+      watchId: null,
+      finalTripSaved: false
     };
 
     const DOM = {
@@ -158,7 +181,15 @@
       modalSteps: document.getElementById('modal-steps'),
       keepDestinationToggle: document.getElementById('keep-destination-toggle'),
       btnModalNextLeg: document.getElementById('btn-modal-next-leg'),
-      btnModalNewDestination: document.getElementById('btn-modal-new-destination')
+      btnModalNewDestination: document.getElementById('btn-modal-new-destination'),
+      finalSummaryModal: document.getElementById('final-summary-modal'),
+      finalDestinationName: document.getElementById('final-destination-name'),
+      finalTotalDistance: document.getElementById('final-total-distance'),
+      finalTotalTime: document.getElementById('final-total-time'),
+      finalTotalSteps: document.getElementById('final-total-steps'),
+      finalLegCount: document.getElementById('final-leg-count'),
+      btnFinalSave: document.getElementById('btn-final-save'),
+      btnFinalNewTrip: document.getElementById('btn-final-new-trip')
     };
 
     let map;
@@ -268,6 +299,12 @@
       return (value / 1000).toFixed(2) + ' km';
     }
 
+    function formatDuration(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+    }
+
     async function calculateWalkingRoute() {
       if (!appState.startCoords || !appState.endCoords) {
         alert('Please pick a start and destination first.');
@@ -357,6 +394,7 @@
           updateUserMarker(newPt);
           map.panTo(newPt);
           checkDestinationArrival(newPt);
+          checkFinalArrival(newPt);
         }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
       }
 
@@ -390,6 +428,7 @@
           updateUserMarker(newPt);
           map.panTo(newPt);
           checkDestinationArrival(newPt);
+          checkFinalArrival(newPt);
         }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
       }
       DOM.btnStartPause.textContent = 'Pause';
@@ -413,6 +452,16 @@
       }
     }
 
+    function checkFinalArrival(currentPt) {
+      if (!appState.finalDestination || !appState.currentLegEnd) return;
+      const distToFinal = getDistanceMeters(currentPt, appState.finalDestination.coords);
+      if (distToFinal <= 25) {
+        appState.arrived = true;
+        pauseWalk();
+        showFinalSummary();
+      }
+    }
+
     function showArrivalModal() {
       const distance = appState.currentLegDistance || getDistanceMeters(appState.startCoords, appState.currentLegEnd.coords);
       const mins = Math.floor(appState.currentLegElapsedSeconds / 60);
@@ -429,6 +478,26 @@
     function hideArrivalModal() {
       DOM.arrivalModal.classList.add('hidden');
       DOM.arrivalModal.classList.remove('flex');
+    }
+
+    function showFinalSummary() {
+      const totalDistance = appState.totalDistanceMeters + appState.currentLegDistance;
+      const totalSeconds = appState.totalElapsedSeconds + appState.currentLegElapsedSeconds;
+      const totalSteps = Math.round(totalDistance / 0.75);
+
+      DOM.finalDestinationName.textContent = 'You reached ' + (appState.finalDestination?.label || 'your destination');
+      DOM.finalTotalDistance.textContent = toKm(totalDistance);
+      DOM.finalTotalTime.textContent = formatDuration(totalSeconds);
+      DOM.finalTotalSteps.textContent = totalSteps.toLocaleString();
+      DOM.finalLegCount.textContent = appState.completedLegs.length + 1;
+
+      DOM.finalSummaryModal.classList.remove('hidden');
+      DOM.finalSummaryModal.classList.add('flex');
+    }
+
+    function hideFinalSummary() {
+      DOM.finalSummaryModal.classList.add('hidden');
+      DOM.finalSummaryModal.classList.remove('flex');
     }
 
     function onLegComplete() {
@@ -562,6 +631,16 @@
       DOM.keepDestinationToggle.checked = false;
       hideArrivalModal();
       clearEndLocation();
+    });
+
+    DOM.btnFinalSave.addEventListener('click', () => {
+      appState.finalTripSaved = true;
+      hideFinalSummary();
+    });
+
+    DOM.btnFinalNewTrip.addEventListener('click', () => {
+      hideFinalSummary();
+      resetPlanner();
     });
 
     initMap();
