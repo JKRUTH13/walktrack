@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WalkTrack</title>
+  <title>WalkTrack - Persistent Destination</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -14,11 +14,11 @@
     .pulse {
       width: 18px; height: 18px; border-radius: 50%;
       background: #22c55e; box-shadow: 0 0 0 0 rgba(34,197,94,0.7);
-      animation: pulse 1.6s infinite;
+      animation: pulse 1.4s infinite;
     }
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.7); }
-      70% { box-shadow: 0 0 0 16px rgba(34,197,94,0); }
+      70% { box-shadow: 0 0 0 14px rgba(34,197,94,0); }
       100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
     }
   </style>
@@ -27,12 +27,10 @@
   <div class="flex flex-col h-screen">
     <header class="bg-white border-b border-slate-200 px-4 py-3 flex justify-between items-center shadow-sm z-20">
       <div class="flex items-center gap-3">
-        <div class="bg-emerald-500 text-white p-2 rounded-xl">
-          <i class="fa-solid fa-person-walking text-xl"></i>
-        </div>
+        <div class="bg-emerald-500 text-white p-2 rounded-xl"><span>🚶</span></div>
         <div>
           <h1 class="font-bold text-lg">WalkTrack</h1>
-          <p class="text-xs text-slate-500">Route planner and walking tracker</p>
+          <p class="text-xs text-slate-500">Persistent destination trips</p>
         </div>
       </div>
       <div class="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full">Leg <span id="trip-leg-indicator">1</span></div>
@@ -114,29 +112,30 @@
 
   <script>
     const appState = {
+      finalDestination: null,
+      currentLegStart: null,
+      currentLegEnd: null,
+      currentLegDistance: 0,
+      currentLegElapsedSeconds: 0,
+      totalDistanceMeters: 0,
+      totalElapsedSeconds: 0,
+      completedLegs: [],
+      keepDestinationForNextLeg: false,
+      tracking: false,
+      paused: false,
+      arrived: false,
       startCoords: null,
       endCoords: null,
       startAddress: '',
       endAddress: '',
-      persistentDestinationCoords: null,
-      persistentDestinationAddress: '',
-      keepDestinationForNextLeg: false,
-      currentLegDistance: 0,
-      currentLegSeconds: 0,
-      elapsedSeconds: 0,
-      tracking: false,
-      paused: false,
       startTime: null,
       pauseStartTime: null,
       pausedDuration: 0,
       walkedPathCoords: [],
       routeCoords: [],
       legNumber: 1,
-      arrived: false,
       timerInterval: null,
-      watchId: null,
-      lastPosition: null,
-      savedTrips: []
+      watchId: null
     };
 
     const DOM = {
@@ -193,7 +192,6 @@
 
     function createStartIcon() {
       return L.divIcon({
-        className: 'marker-start',
         html: '<div style="background:#10b981;width:20px;height:20px;border-radius:9999px;border:3px solid white;box-shadow:0 0 10px rgba(0,0,0,.3)"></div>',
         iconSize: [20, 20],
         iconAnchor: [10, 10]
@@ -202,7 +200,6 @@
 
     function createEndIcon() {
       return L.divIcon({
-        className: 'marker-end',
         html: '<div style="background:#ef4444;width:20px;height:20px;border-radius:9999px;border:3px solid white;box-shadow:0 0 10px rgba(0,0,0,.3)"></div>',
         iconSize: [20, 20],
         iconAnchor: [10, 10]
@@ -211,7 +208,6 @@
 
     function createUserIcon() {
       return L.divIcon({
-        className: 'marker-user',
         html: '<div class="pulse"></div>',
         iconSize: [18, 18],
         iconAnchor: [9, 9]
@@ -229,6 +225,7 @@
     function setStartLocation(coords, label) {
       appState.startCoords = coords;
       appState.startAddress = label;
+      appState.currentLegStart = { coords, label };
       DOM.inputStart.value = label;
 
       if (startMarker) map.removeLayer(startMarker);
@@ -243,8 +240,8 @@
     function setEndLocation(coords, label) {
       appState.endCoords = coords;
       appState.endAddress = label;
-      appState.persistentDestinationCoords = coords;
-      appState.persistentDestinationAddress = label;
+      appState.currentLegEnd = { coords, label };
+      appState.finalDestination = { coords, label };
       DOM.inputEnd.value = label;
 
       if (endMarker) map.removeLayer(endMarker);
@@ -259,8 +256,8 @@
     function clearEndLocation() {
       appState.endCoords = null;
       appState.endAddress = '';
-      appState.persistentDestinationCoords = null;
-      appState.persistentDestinationAddress = '';
+      appState.currentLegEnd = null;
+      appState.finalDestination = null;
       DOM.inputEnd.value = '';
       if (endMarker) map.removeLayer(endMarker);
       routePolyline.setLatLngs([]);
@@ -271,20 +268,13 @@
       return (value / 1000).toFixed(2) + ' km';
     }
 
-    function toMiles(value) {
-      return (value * 0.000621371).toFixed(2) + ' mi';
-    }
-
     async function calculateWalkingRoute() {
       if (!appState.startCoords || !appState.endCoords) {
         alert('Please pick a start and destination first.');
         return;
       }
 
-      const url = 'https://router.project-osrm.org/route/v1/foot/' +
-        appState.startCoords[1] + ',' + appState.startCoords[0] + ';' +
-        appState.endCoords[1] + ',' + appState.endCoords[0] +
-        '?overview=full&geometries=geojson';
+      const url = 'https://router.project-osrm.org/route/v1/foot/' + appState.startCoords[1] + ',' + appState.startCoords[0] + ';' + appState.endCoords[1] + ',' + appState.endCoords[0] + '?overview=full&geometries=geojson';
 
       try {
         const res = await fetch(url);
@@ -339,21 +329,20 @@
       appState.tracking = true;
       appState.paused = false;
       appState.arrived = false;
+      appState.currentLegDistance = 0;
 
       if (!appState.startTime) {
         appState.startTime = Date.now();
         appState.walkedPathCoords = [appState.startCoords];
-        appState.currentLegDistance = 0;
-        appState.elapsedSeconds = 0;
         walkedPolyline.setLatLngs(appState.walkedPathCoords);
       }
 
-      appState.timerInterval = setInterval(updateMetrics, 1000);
+      appState.timerInterval = setInterval(updateElapsedTime, 1000);
+
       if ('geolocation' in navigator) {
         appState.watchId = navigator.geolocation.watchPosition((pos) => {
           if (appState.paused || appState.arrived) return;
           const newPt = [pos.coords.latitude, pos.coords.longitude];
-          appState.lastPosition = newPt;
 
           if (appState.walkedPathCoords.length) {
             const last = appState.walkedPathCoords[appState.walkedPathCoords.length - 1];
@@ -368,10 +357,7 @@
           updateUserMarker(newPt);
           map.panTo(newPt);
           checkDestinationArrival(newPt);
-          updateMetrics();
-        }, (err) => {
-          console.error(err);
-        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
+        }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
       }
 
       DOM.btnStartPause.textContent = 'Pause';
@@ -389,23 +375,37 @@
     function resumeWalk() {
       if (!appState.tracking) return;
       appState.paused = false;
-      appState.pauseStartTime = Date.now();
-      appState.timerInterval = setInterval(updateMetrics, 1000);
+      appState.timerInterval = setInterval(updateElapsedTime, 1000);
+      if ('geolocation' in navigator) {
+        appState.watchId = navigator.geolocation.watchPosition((pos) => {
+          if (appState.paused || appState.arrived) return;
+          const newPt = [pos.coords.latitude, pos.coords.longitude];
+          if (appState.walkedPathCoords.length) {
+            const last = appState.walkedPathCoords[appState.walkedPathCoords.length - 1];
+            const delta = getDistanceMeters(last, newPt);
+            if (delta > 1.5) appState.currentLegDistance += delta;
+          }
+          appState.walkedPathCoords.push(newPt);
+          walkedPolyline.setLatLngs(appState.walkedPathCoords);
+          updateUserMarker(newPt);
+          map.panTo(newPt);
+          checkDestinationArrival(newPt);
+        }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
+      }
       DOM.btnStartPause.textContent = 'Pause';
-      startWalk();
     }
 
-    function updateMetrics() {
+    function updateElapsedTime() {
       if (!appState.startTime || appState.paused) return;
-      appState.elapsedSeconds = Math.floor((Date.now() - appState.startTime - appState.pausedDuration) / 1000);
-      const mins = Math.floor(appState.elapsedSeconds / 60);
-      const secs = appState.elapsedSeconds % 60;
+      appState.currentLegElapsedSeconds = Math.floor((Date.now() - appState.startTime - appState.pausedDuration) / 1000);
+      const mins = Math.floor(appState.currentLegElapsedSeconds / 60);
+      const secs = appState.currentLegElapsedSeconds % 60;
       DOM.modalTime.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
     }
 
     function checkDestinationArrival(currentPt) {
-      if (!appState.endCoords || appState.arrived) return;
-      const distToEnd = getDistanceMeters(currentPt, appState.endCoords);
+      if (!appState.currentLegEnd || appState.arrived) return;
+      const distToEnd = getDistanceMeters(currentPt, appState.currentLegEnd.coords);
       if (distToEnd <= 25) {
         appState.arrived = true;
         pauseWalk();
@@ -414,9 +414,9 @@
     }
 
     function showArrivalModal() {
-      const distance = appState.currentLegDistance || getDistanceMeters(appState.startCoords, appState.endCoords);
-      const mins = Math.floor(appState.elapsedSeconds / 60);
-      const secs = appState.elapsedSeconds % 60;
+      const distance = appState.currentLegDistance || getDistanceMeters(appState.startCoords, appState.currentLegEnd.coords);
+      const mins = Math.floor(appState.currentLegElapsedSeconds / 60);
+      const secs = appState.currentLegElapsedSeconds % 60;
 
       DOM.modalDist.textContent = toKm(distance);
       DOM.modalTime.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
@@ -431,49 +431,55 @@
       DOM.arrivalModal.classList.remove('flex');
     }
 
-    function completeLeg() {
+    function onLegComplete() {
+      const legSummary = {
+        start: appState.currentLegStart,
+        end: appState.currentLegEnd,
+        distance: appState.currentLegDistance,
+        time: appState.currentLegElapsedSeconds,
+        steps: Math.round(appState.currentLegDistance / 0.75)
+      };
+
+      appState.completedLegs.push(legSummary);
+      appState.totalDistanceMeters += appState.currentLegDistance;
+      appState.totalElapsedSeconds += appState.currentLegElapsedSeconds;
+
       appState.keepDestinationForNextLeg = DOM.keepDestinationToggle.checked;
       hideArrivalModal();
-      saveTripToHistory();
 
-      if (appState.keepDestinationForNextLeg) {
-        const previousDestination = {
-          coords: [...appState.endCoords],
-          address: appState.endAddress || 'Previous destination'
-        };
+      if (appState.keepDestinationForNextLeg && appState.finalDestination) {
+        appState.currentLegStart = appState.currentLegEnd;
+        appState.startCoords = appState.currentLegEnd.coords;
+        appState.startAddress = appState.currentLegEnd.label;
+        DOM.inputStart.value = appState.startAddress;
 
-        appState.startCoords = previousDestination.coords;
-        appState.startAddress = previousDestination.address;
-        DOM.inputStart.value = previousDestination.address;
+        appState.currentLegEnd = { ...appState.finalDestination };
+        appState.endCoords = appState.finalDestination.coords;
+        appState.endAddress = appState.finalDestination.label;
+        DOM.inputEnd.value = appState.finalDestination.label;
 
-        appState.endCoords = previousDestination.coords;
-        appState.endAddress = previousDestination.address;
-        DOM.inputEnd.value = previousDestination.address;
-
-        appState.walkedPathCoords = [previousDestination.coords];
+        appState.walkedPathCoords = [appState.currentLegStart.coords];
         appState.currentLegDistance = 0;
-        appState.elapsedSeconds = 0;
+        appState.currentLegElapsedSeconds = 0;
         appState.startTime = null;
         appState.pausedDuration = 0;
         appState.paused = false;
         appState.tracking = false;
         appState.arrived = false;
+        clearInterval(appState.timerInterval);
 
-        walkResetVisuals();
+        if (startMarker) map.removeLayer(startMarker);
+        startMarker = L.marker(appState.currentLegStart.coords, { icon: createStartIcon() }).addTo(map);
+        startMarker.bindPopup('<b>Start:</b> ' + appState.currentLegStart.label);
+
         DOM.tripLegIndicator.textContent = String(++appState.legNumber);
+        routePolyline.setLatLngs([]);
+        walkedPolyline.setLatLngs([]);
+        DOM.btnStop.classList.add('hidden');
+        DOM.btnStartPause.textContent = 'Start Walk';
       } else {
         resetPlanner();
       }
-    }
-
-    function walkResetVisuals() {
-      clearInterval(appState.timerInterval);
-      if (appState.watchId && navigator.geolocation) navigator.geolocation.clearWatch(appState.watchId);
-      walkedPolyline.setLatLngs([]);
-      routePolyline.setLatLngs([]);
-      DOM.routeSummaryCard.classList.add('hidden');
-      DOM.btnStop.classList.add('hidden');
-      DOM.btnStartPause.textContent = 'Start Walk';
     }
 
     function resetPlanner() {
@@ -484,15 +490,21 @@
       appState.endCoords = null;
       appState.startAddress = '';
       appState.endAddress = '';
-      appState.keepDestinationForNextLeg = false;
+      appState.currentLegStart = null;
+      appState.currentLegEnd = null;
+      appState.finalDestination = null;
       appState.currentLegDistance = 0;
-      appState.elapsedSeconds = 0;
+      appState.currentLegElapsedSeconds = 0;
+      appState.totalDistanceMeters = 0;
+      appState.totalElapsedSeconds = 0;
+      appState.completedLegs = [];
+      appState.keepDestinationForNextLeg = false;
       appState.tracking = false;
       appState.paused = false;
+      appState.arrived = false;
       appState.startTime = null;
       appState.walkedPathCoords = [];
       appState.legNumber = 1;
-      appState.arrived = false;
 
       DOM.inputStart.value = '';
       DOM.inputEnd.value = '';
@@ -509,19 +521,9 @@
       endMarker = null;
     }
 
-    function saveTripToHistory() {
-      const trip = {
-        leg: appState.legNumber,
-        distance: appState.currentLegDistance || getDistanceMeters(appState.startCoords, appState.endCoords),
-        time: appState.elapsedSeconds,
-        timestamp: new Date().toLocaleString()
-      };
-      appState.savedTrips.push(trip);
-      console.log('Trip saved:', trip);
-    }
-
     DOM.btnCalcRoute.addEventListener('click', calculateWalkingRoute);
     DOM.btnClearEnd.addEventListener('click', clearEndLocation);
+
     DOM.btnStartPause.addEventListener('click', () => {
       if (!appState.tracking) {
         startWalk();
@@ -531,6 +533,7 @@
         pauseWalk();
       }
     });
+
     DOM.btnStop.addEventListener('click', () => {
       clearInterval(appState.timerInterval);
       if (appState.watchId && navigator.geolocation) navigator.geolocation.clearWatch(appState.watchId);
@@ -538,7 +541,6 @@
       appState.paused = false;
       DOM.btnStop.classList.add('hidden');
       DOM.btnStartPause.textContent = 'Start Walk';
-      saveTripToHistory();
     });
 
     DOM.btnNextLeg.addEventListener('click', () => {
@@ -554,25 +556,12 @@
       DOM.tripLegIndicator.textContent = appState.legNumber;
     });
 
-    DOM.btnModalNextLeg.addEventListener('click', completeLeg);
+    DOM.btnModalNextLeg.addEventListener('click', onLegComplete);
     DOM.btnModalNewDestination.addEventListener('click', () => {
       appState.keepDestinationForNextLeg = false;
       DOM.keepDestinationToggle.checked = false;
       hideArrivalModal();
       clearEndLocation();
-    });
-
-    DOM.inputStart.addEventListener('change', () => {
-      if (!DOM.inputStart.value.trim()) return;
-      appState.startAddress = DOM.inputStart.value.trim();
-    });
-
-    DOM.inputEnd.addEventListener('change', () => {
-      if (!DOM.inputEnd.value.trim()) return;
-      const label = DOM.inputEnd.value.trim();
-      const fallback = [32.4315, -80.6698];
-      const coords = appState.endCoords || fallback;
-      setEndLocation(coords, label);
     });
 
     initMap();
