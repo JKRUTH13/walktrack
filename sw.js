@@ -1,19 +1,47 @@
-{
-  "name": "WalkTrack",
-  "short_name": "WalkTrack",
-  "description": "Walking route planner and GPS tracker",
-  "start_url": "./",
-  "scope": "./",
-  "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#22c55e",
-  "orientation": "portrait",
-  "icons": [
-    {
-      "src": "./icon.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
-  ]
-}
+const CACHE_NAME = 'walktrack-v1';
+const APP_SHELL = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './icon.svg',
+  './favicon.ico'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      )
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+
+      return fetch(event.request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      }).catch(() => {
+        if (event.request.mode === 'navigate') {
+          return caches.match('./index.html');
+        }
+        return caches.match('./icon.svg');
+      });
+    })
+  );
+});
