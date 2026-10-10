@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WalkTrack - Persistent Destination</title>
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#22c55e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="WalkTrack" />
+  <link rel="apple-touch-icon" href="./icon.svg" />
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -98,619 +107,244 @@
         <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-3xl">🏆</div>
       </div>
       <h2 class="text-center text-2xl font-black text-slate-800">Destination Reached!</h2>
-      <p class="text-center text-sm text-slate-500 mt-2">Great job — your walk leg is complete.</p>
-
-      <div class="mt-4 bg-slate-50 rounded-2xl p-3 text-sm space-y-2 border border-slate-200">
-        <div class="flex justify-between"><span>Distance</span><strong id="modal-dist">0.0 km</strong></div>
-        <div class="flex justify-between"><span>Time</span><strong id="modal-time">00:00</strong></div>
-        <div class="flex justify-between"><span>Steps</span><strong id="modal-steps">0</strong></div>
+      <p class="text-center text-sm text-slate-500 mt-2">You made it to your destination for this leg.</p>
+      <div class="bg-slate-50 rounded-2xl p-3 mt-4 text-xs space-y-1">
+        <div class="flex justify-between">
+          <span class="text-slate-600">Distance</span>
+          <span class="font-bold text-slate-800" id="modal-distance">0.0 km</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-600">Duration</span>
+          <span class="font-bold text-slate-800" id="modal-duration">0:00</span>
+        </div>
       </div>
-
-      <div class="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-3">
-        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Leg summary</div>
-        <div id="leg-summary-list" class="mt-2 text-xs text-slate-700 space-y-1"></div>
-      </div>
-
-      <label class="mt-4 flex items-center gap-3 bg-slate-50 rounded-xl p-3 border border-slate-200">
-        <input id="keep-destination-toggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-        <span class="text-sm text-slate-700">Keep this destination for the next leg</span>
-      </label>
-
-      <div class="mt-4 space-y-2">
-        <button id="btn-modal-next-leg" class="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-bold">Continue to next leg</button>
-        <button id="btn-modal-new-destination" class="w-full bg-slate-200 text-slate-800 py-2 rounded-xl font-semibold">Set a new destination</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="final-summary-modal" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
-      <div class="flex justify-center mb-4">
-        <div class="w-16 h-16 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-3xl">🎉</div>
-      </div>
-      <h2 class="text-center text-2xl font-black text-slate-800">Trip Complete!</h2>
-      <p id="final-destination-name" class="text-center text-sm text-slate-500 mt-2">You reached your destination.</p>
-
-      <div class="mt-4 bg-slate-50 rounded-2xl p-3 text-sm space-y-2 border border-slate-200">
-        <div class="flex justify-between"><span>Total distance</span><strong id="final-total-distance">0.0 km</strong></div>
-        <div class="flex justify-between"><span>Total time</span><strong id="final-total-time">00:00</strong></div>
-        <div class="flex justify-between"><span>Total steps</span><strong id="final-total-steps">0</strong></div>
-        <div class="flex justify-between"><span>Legs completed</span><strong id="final-leg-count">0</strong></div>
-      </div>
-
-      <div class="mt-4 bg-slate-50 rounded-xl border border-slate-200 p-3">
-        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-500">Completed legs</div>
-        <div id="completed-legs-list" class="mt-2 text-xs text-slate-700 space-y-1"></div>
-      </div>
-
-      <div class="mt-4 space-y-2">
-        <button id="btn-final-save" class="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-bold">Save trip</button>
-        <button id="btn-final-new-trip" class="w-full bg-slate-200 text-slate-800 py-2 rounded-xl font-semibold">Start a new trip</button>
+      <div class="flex gap-2 mt-4">
+        <button id="btn-modal-next" class="flex-1 bg-emerald-600 text-white py-2 rounded-xl font-semibold">Next Leg</button>
+        <button id="btn-modal-finish" class="flex-1 bg-slate-200 text-slate-800 py-2 rounded-xl font-semibold">Finish Trip</button>
       </div>
     </div>
   </div>
 
   <script>
-    const appState = {
-      finalDestination: null,
-      currentLegStart: null,
-      currentLegEnd: null,
-      currentLegDistance: 0,
-      currentLegElapsedSeconds: 0,
-      totalDistanceMeters: 0,
-      totalElapsedSeconds: 0,
-      completedLegs: [],
-      keepDestinationForNextLeg: false,
+    // Service Worker Registration - REQUIRED for PWA installability
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').then(reg => {
+        console.log('✓ Service Worker registered', reg);
+      }).catch(err => {
+        console.error('✗ Service Worker failed:', err);
+      });
+    }
+
+    // Rest of the app code...
+    const state = {
       tracking: false,
-      paused: false,
-      arrived: false,
+      leg: 1,
       startCoords: null,
       endCoords: null,
-      startAddress: '',
-      endAddress: '',
-      startTime: null,
-      pauseStartTime: null,
-      pausedDuration: 0,
-      walkedPathCoords: [],
-      routeCoords: [],
-      legNumber: 1,
-      timerInterval: null,
-      watchId: null,
-      finalTripSaved: false
+      calculatedRouteCoords: [],
+      distanceMeters: 0,
+      startTime: null
     };
 
     const DOM = {
-      map: document.getElementById('map'),
       inputStart: document.getElementById('input-start'),
       inputEnd: document.getElementById('input-end'),
       btnCalcRoute: document.getElementById('btn-calc-route'),
-      btnClearEnd: document.getElementById('btn-clear-end'),
       btnStartPause: document.getElementById('btn-start-pause'),
       btnStop: document.getElementById('btn-stop'),
       btnNextLeg: document.getElementById('btn-next-leg'),
+      btnClearEnd: document.getElementById('btn-clear-end'),
+      currentGoalLabel: document.getElementById('current-goal-label'),
+      finalDestinationBadge: document.getElementById('final-destination-badge'),
       tripLegIndicator: document.getElementById('trip-leg-indicator'),
       routeSummaryCard: document.getElementById('route-summary-card'),
       summaryDistance: document.getElementById('summary-distance'),
       summaryTime: document.getElementById('summary-time'),
       summarySteps: document.getElementById('summary-steps'),
       arrivalModal: document.getElementById('arrival-modal'),
-      modalDist: document.getElementById('modal-dist'),
-      modalTime: document.getElementById('modal-time'),
-      modalSteps: document.getElementById('modal-steps'),
-      legSummaryList: document.getElementById('leg-summary-list'),
-      keepDestinationToggle: document.getElementById('keep-destination-toggle'),
-      btnModalNextLeg: document.getElementById('btn-modal-next-leg'),
-      btnModalNewDestination: document.getElementById('btn-modal-new-destination'),
-      finalDestinationBadge: document.getElementById('final-destination-badge'),
-      currentGoalLabel: document.getElementById('current-goal-label'),
-      finalSummaryModal: document.getElementById('final-summary-modal'),
-      finalDestinationName: document.getElementById('final-destination-name'),
-      finalTotalDistance: document.getElementById('final-total-distance'),
-      finalTotalTime: document.getElementById('final-total-time'),
-      finalTotalSteps: document.getElementById('final-total-steps'),
-      finalLegCount: document.getElementById('final-leg-count'),
-      completedLegsList: document.getElementById('completed-legs-list'),
-      btnFinalSave: document.getElementById('btn-final-save'),
-      btnFinalNewTrip: document.getElementById('btn-final-new-trip')
+      modalDistance: document.getElementById('modal-distance'),
+      modalDuration: document.getElementById('modal-duration'),
+      btnModalNext: document.getElementById('btn-modal-next'),
+      btnModalFinish: document.getElementById('btn-modal-finish')
     };
 
-    let map;
-    let routePolyline;
-    let walkedPolyline;
-    let startMarker;
-    let endMarker;
-    let userMarker;
+    let map = null;
+    let routeLine = null;
+    let userMarker = null;
+    let startMarker = null;
+    let endMarker = null;
 
     function initMap() {
-      map = L.map('map').setView([32.4315, -80.6698], 12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(map);
+      map = L.map('map').setView([32.43, -80.67], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      
+      routeLine = L.polyline([], { color: '#3b82f6', weight: 4, dashArray: '5,5' }).addTo(map);
+      
+      map.on('click', (e) => {
+        const coords = [e.latlng.lat, e.latlng.lng];
+        if (!state.startCoords) {
+          setStart(coords);
+        } else if (!state.endCoords) {
+          setEnd(coords);
+        }
+      });
 
-      routePolyline = L.polyline([], { color: '#2563eb', weight: 5, dashArray: '8,8' }).addTo(map);
-      walkedPolyline = L.polyline([], { color: '#22c55e', weight: 6 }).addTo(map);
-
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition((pos) => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(pos => {
           const userCoords = [pos.coords.latitude, pos.coords.longitude];
-          if (!appState.startCoords) {
-            setStartLocation(userCoords, 'Current Location');
-          }
+          if (!state.startCoords) setStart(userCoords);
           updateUserMarker(userCoords);
-          map.setView(userCoords, 14);
         });
       }
     }
 
-    function createStartIcon() {
-      return L.divIcon({
-        html: '<div style="background:#10b981;width:20px;height:20px;border-radius:9999px;border:3px solid white;box-shadow:0 0 10px rgba(0,0,0,.3)"></div>',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-      });
+    function setStart(coords) {
+      state.startCoords = coords;
+      DOM.inputStart.value = `${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}`;
+      if (startMarker) map.removeLayer(startMarker);
+      startMarker = L.marker(coords, { icon: L.icon({ iconUrl: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="%2310b981"/><text x="15" y="18" text-anchor="middle" fill="white" font-size="16" font-weight="bold">S</text></svg>', iconSize: [30, 30] }) }).addTo(map);
+      updateUserMarker(coords);
     }
 
-    function createEndIcon() {
-      return L.divIcon({
-        html: '<div style="background:#ef4444;width:20px;height:20px;border-radius:9999px;border:3px solid white;box-shadow:0 0 10px rgba(0,0,0,.3)"></div>',
-        iconSize: [20, 20],
-        iconAnchor: [10, 10]
-      });
-    }
-
-    function createUserIcon() {
-      return L.divIcon({
-        html: '<div class="pulse"></div>',
-        iconSize: [18, 18],
-        iconAnchor: [9, 9]
-      });
+    function setEnd(coords) {
+      state.endCoords = coords;
+      DOM.inputEnd.value = `${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}`;
+      if (endMarker) map.removeLayer(endMarker);
+      endMarker = L.marker(coords, { icon: L.icon({ iconUrl: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><circle cx="15" cy="15" r="12" fill="%23ef4444"/><text x="15" y="18" text-anchor="middle" fill="white" font-size="16" font-weight="bold">E</text></svg>', iconSize: [30, 30] }) }).addTo(map);
+      DOM.finalDestinationBadge.textContent = `Final: ${coords[0].toFixed(2)}, ${coords[1].toFixed(2)}`;
+      updateCurrentGoal();
     }
 
     function updateUserMarker(coords) {
       if (!userMarker) {
-        userMarker = L.marker(coords, { icon: createUserIcon() }).addTo(map);
+        userMarker = L.marker(coords, { icon: L.icon({ iconUrl: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="%2322c55e"/></svg>', iconSize: [20, 20] }) }).addTo(map);
       } else {
         userMarker.setLatLng(coords);
       }
     }
 
-    function updateDestinationBadges() {
-      if (appState.finalDestination) {
-        DOM.finalDestinationBadge.textContent = 'Final: ' + appState.finalDestination.label;
-        DOM.currentGoalLabel.textContent = appState.currentLegEnd ? appState.currentLegEnd.label : appState.finalDestination.label;
-      } else {
-        DOM.finalDestinationBadge.textContent = 'Final: not set';
-        DOM.currentGoalLabel.textContent = 'Not set';
+    function updateCurrentGoal() {
+      if (state.endCoords) {
+        DOM.currentGoalLabel.textContent = `Leg ${state.leg}: ${state.endCoords[0].toFixed(2)}, ${state.endCoords[1].toFixed(2)}`;
       }
     }
 
-    function setStartLocation(coords, label) {
-      appState.startCoords = coords;
-      appState.startAddress = label;
-      appState.currentLegStart = { coords, label };
-      DOM.inputStart.value = label;
+    async function calculateRoute() {
+      if (!state.startCoords || !state.endCoords) return alert('Set both start and end');
 
-      if (startMarker) map.removeLayer(startMarker);
-      startMarker = L.marker(coords, { icon: createStartIcon() }).addTo(map);
-      startMarker.bindPopup('<b>Start:</b> ' + label);
-
-      if (appState.endCoords) {
-        map.fitBounds(L.latLngBounds([appState.startCoords, appState.endCoords]), { padding: [40, 40] });
-      }
-    }
-
-    function setEndLocation(coords, label) {
-      appState.endCoords = coords;
-      appState.endAddress = label;
-      appState.currentLegEnd = { coords, label };
-      appState.finalDestination = { coords, label };
-      DOM.inputEnd.value = label;
-      updateDestinationBadges();
-
-      if (endMarker) map.removeLayer(endMarker);
-      endMarker = L.marker(coords, { icon: createEndIcon() }).addTo(map);
-      endMarker.bindPopup('<b>Destination:</b> ' + label);
-
-      if (appState.startCoords) {
-        map.fitBounds(L.latLngBounds([appState.startCoords, appState.endCoords]), { padding: [40, 40] });
-      }
-    }
-
-    function clearEndLocation() {
-      appState.endCoords = null;
-      appState.endAddress = '';
-      appState.currentLegEnd = null;
-      appState.finalDestination = null;
-      DOM.inputEnd.value = '';
-      if (endMarker) map.removeLayer(endMarker);
-      routePolyline.setLatLngs([]);
-      DOM.routeSummaryCard.classList.add('hidden');
-      updateDestinationBadges();
-    }
-
-    function toKm(value) {
-      return (value / 1000).toFixed(2) + ' km';
-    }
-
-    function formatDuration(seconds) {
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-    }
-
-    async function calculateWalkingRoute() {
-      if (!appState.startCoords || !appState.endCoords) {
-        alert('Please pick a start and destination first.');
-        return;
-      }
-
-      const url = 'https://router.project-osrm.org/route/v1/foot/' + appState.startCoords[1] + ',' + appState.startCoords[0] + ';' + appState.endCoords[1] + ',' + appState.endCoords[0] + '?overview=full&geometries=geojson';
+      const [lat1, lng1] = state.startCoords;
+      const [lat2, lng2] = state.endCoords;
 
       try {
-        const res = await fetch(url);
+        const res = await fetch(`https://router.project-osrm.org/route/v1/foot/${lng1},${lat1};${lng2},${lat2}?overview=full&geometries=geojson`);
         const data = await res.json();
-
-        if (data.routes && data.routes.length) {
+        
+        if (data.routes?.[0]) {
           const route = data.routes[0];
-          appState.routeCoords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-          routePolyline.setLatLngs(appState.routeCoords);
-          map.fitBounds(routePolyline.getBounds(), { padding: [45, 45] });
+          state.calculatedRouteCoords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+          const dist = route.distance;
+          const mins = Math.round(route.duration / 60);
+          const steps = Math.round(dist / 0.75);
 
-          const distanceText = toKm(route.distance);
-          const timeMins = Math.round(route.duration / 60);
-          const steps = Math.round(route.distance / 0.75);
+          routeLine.setLatLngs(state.calculatedRouteCoords);
+          map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
 
-          DOM.summaryDistance.textContent = distanceText;
-          DOM.summaryTime.textContent = timeMins + ' mins';
-          DOM.summarySteps.textContent = steps.toLocaleString();
+          DOM.summaryDistance.textContent = `${(dist / 1000).toFixed(2)} km`;
+          DOM.summaryTime.textContent = `${mins} mins`;
+          DOM.summarySteps.textContent = `${steps.toLocaleString()} steps`;
           DOM.routeSummaryCard.classList.remove('hidden');
         }
       } catch (e) {
-        const directDistance = getDistanceMeters(appState.startCoords, appState.endCoords);
-        appState.routeCoords = [appState.startCoords, appState.endCoords];
-        routePolyline.setLatLngs(appState.routeCoords);
-        map.fitBounds(routePolyline.getBounds(), { padding: [45, 45] });
-
-        DOM.summaryDistance.textContent = toKm(directDistance);
-        DOM.summaryTime.textContent = Math.round(directDistance / 1000 / 1.3 * 60) + ' mins';
-        DOM.summarySteps.textContent = Math.round(directDistance / 0.75).toLocaleString();
-        DOM.routeSummaryCard.classList.remove('hidden');
+        console.error('Route error:', e);
       }
-    }
-
-    function getDistanceMeters(coordA, coordB) {
-      const R = 6371000;
-      const dLat = (coordB[0] - coordA[0]) * Math.PI / 180;
-      const dLng = (coordB[1] - coordA[1]) * Math.PI / 180;
-      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(coordA[0] * Math.PI / 180) *
-        Math.cos(coordB[0] * Math.PI / 180) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
     }
 
     function startWalk() {
-      if (!appState.startCoords) {
-        alert('Set a start location first.');
-        return;
-      }
-
-      appState.tracking = true;
-      appState.paused = false;
-      appState.arrived = false;
-      appState.currentLegDistance = 0;
-
-      if (!appState.startTime) {
-        appState.startTime = Date.now();
-        appState.walkedPathCoords = [appState.startCoords];
-        walkedPolyline.setLatLngs(appState.walkedPathCoords);
-      }
-
-      appState.timerInterval = setInterval(updateElapsedTime, 1000);
-
-      if ('geolocation' in navigator) {
-        appState.watchId = navigator.geolocation.watchPosition((pos) => {
-          if (appState.paused || appState.arrived) return;
-          const newPt = [pos.coords.latitude, pos.coords.longitude];
-
-          if (appState.walkedPathCoords.length) {
-            const last = appState.walkedPathCoords[appState.walkedPathCoords.length - 1];
-            const delta = getDistanceMeters(last, newPt);
-            if (delta > 1.5) {
-              appState.currentLegDistance += delta;
-            }
-          }
-
-          appState.walkedPathCoords.push(newPt);
-          walkedPolyline.setLatLngs(appState.walkedPathCoords);
-          updateUserMarker(newPt);
-          map.panTo(newPt);
-          checkDestinationArrival(newPt);
-          checkFinalArrival(newPt);
-        }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
-      }
-
+      if (!state.startCoords) return alert('Set start location');
+      state.tracking = true;
+      state.startTime = Date.now();
+      state.distanceMeters = 0;
       DOM.btnStartPause.textContent = 'Pause';
       DOM.btnStop.classList.remove('hidden');
+      
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(pos => {
+          if (!state.tracking) return;
+          const coords = [pos.coords.latitude, pos.coords.longitude];
+          updateUserMarker(coords);
+          
+          if (state.endCoords) {
+            const dist = getDistance(coords, state.endCoords);
+            if (dist < 20) {
+              pauseWalk();
+              showArrivalModal();
+            }
+          }
+        });
+      }
     }
 
     function pauseWalk() {
-      if (!appState.tracking) return;
-      appState.paused = true;
-      clearInterval(appState.timerInterval);
-      if (appState.watchId && navigator.geolocation) navigator.geolocation.clearWatch(appState.watchId);
+      state.tracking = false;
       DOM.btnStartPause.textContent = 'Resume';
     }
 
-    function resumeWalk() {
-      if (!appState.tracking) return;
-      appState.paused = false;
-      appState.timerInterval = setInterval(updateElapsedTime, 1000);
-      if ('geolocation' in navigator) {
-        appState.watchId = navigator.geolocation.watchPosition((pos) => {
-          if (appState.paused || appState.arrived) return;
-          const newPt = [pos.coords.latitude, pos.coords.longitude];
-          if (appState.walkedPathCoords.length) {
-            const last = appState.walkedPathCoords[appState.walkedPathCoords.length - 1];
-            const delta = getDistanceMeters(last, newPt);
-            if (delta > 1.5) appState.currentLegDistance += delta;
-          }
-          appState.walkedPathCoords.push(newPt);
-          walkedPolyline.setLatLngs(appState.walkedPathCoords);
-          updateUserMarker(newPt);
-          map.panTo(newPt);
-          checkDestinationArrival(newPt);
-          checkFinalArrival(newPt);
-        }, () => {}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 });
-      }
-      DOM.btnStartPause.textContent = 'Pause';
+    function stopWalk() {
+      state.tracking = false;
+      DOM.btnStartPause.textContent = 'Start Walk';
+      DOM.btnStop.classList.add('hidden');
     }
 
-    function updateElapsedTime() {
-      if (!appState.startTime || appState.paused) return;
-      appState.currentLegElapsedSeconds = Math.floor((Date.now() - appState.startTime - appState.pausedDuration) / 1000);
-      const mins = Math.floor(appState.currentLegElapsedSeconds / 60);
-      const secs = appState.currentLegElapsedSeconds % 60;
-      DOM.modalTime.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-    }
-
-    function checkDestinationArrival(currentPt) {
-      if (!appState.currentLegEnd || appState.arrived) return;
-      const distToEnd = getDistanceMeters(currentPt, appState.currentLegEnd.coords);
-      if (distToEnd <= 25) {
-        appState.arrived = true;
-        pauseWalk();
-        showArrivalModal();
-      }
-    }
-
-    function checkFinalArrival(currentPt) {
-      if (!appState.finalDestination || !appState.currentLegEnd) return;
-      const distToFinal = getDistanceMeters(currentPt, appState.finalDestination.coords);
-      if (distToFinal <= 25) {
-        appState.arrived = true;
-        pauseWalk();
-        showFinalSummary();
-      }
-    }
-
-    function renderLegSummaryList() {
-      const currentLeg = appState.currentLegStart && appState.currentLegEnd
-        ? `Leg ${appState.legNumber}: ${appState.currentLegStart.label} → ${appState.currentLegEnd.label}`
-        : 'Ready for next leg';
-      DOM.legSummaryList.innerHTML = `
-        <div>${currentLeg}</div>
-        <div>Distance: ${toKm(appState.currentLegDistance)}</div>
-        <div>Time: ${formatDuration(appState.currentLegElapsedSeconds)}</div>
-        <div>Steps: ${Math.round(appState.currentLegDistance / 0.75).toLocaleString()}</div>
-      `;
+    function getDistance(coord1, coord2) {
+      const R = 6371000;
+      const dLat = (coord2[0] - coord1[0]) * Math.PI / 180;
+      const dLng = (coord2[1] - coord1[1]) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(coord1[0] * Math.PI / 180) * Math.cos(coord2[0] * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     function showArrivalModal() {
-      const distance = appState.currentLegDistance || getDistanceMeters(appState.startCoords, appState.currentLegEnd.coords);
-      const mins = Math.floor(appState.currentLegElapsedSeconds / 60);
-      const secs = appState.currentLegElapsedSeconds % 60;
-
-      DOM.modalDist.textContent = toKm(distance);
-      DOM.modalTime.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-      DOM.modalSteps.textContent = Math.round(distance / 0.75).toLocaleString();
-      DOM.keepDestinationToggle.checked = appState.keepDestinationForNextLeg;
-      renderLegSummaryList();
       DOM.arrivalModal.classList.remove('hidden');
       DOM.arrivalModal.classList.add('flex');
     }
 
-    function hideArrivalModal() {
+    function nextLeg() {
+      state.leg++;
+      state.startCoords = state.endCoords;
+      state.endCoords = null;
+      DOM.inputStart.value = DOM.inputEnd.value;
+      DOM.inputEnd.value = '';
+      DOM.tripLegIndicator.textContent = state.leg;
+      DOM.routeSummaryCard.classList.add('hidden');
+      DOM.btnStartPause.textContent = 'Start Walk';
+      DOM.btnStop.classList.add('hidden');
+      state.tracking = false;
       DOM.arrivalModal.classList.add('hidden');
       DOM.arrivalModal.classList.remove('flex');
+      updateCurrentGoal();
     }
 
-    function renderCompletedLegsList() {
-      DOM.completedLegsList.innerHTML = appState.completedLegs.length
-        ? appState.completedLegs.map((leg, index) => `
-            <div>Leg ${index + 1}: ${leg.start.label} → ${leg.end.label}</div>
-            <div class="text-slate-500">${toKm(leg.distance)} • ${formatDuration(leg.time)} • ${leg.steps} steps</div>
-          `).join('')
-        : '<div>No completed legs yet.</div>';
-    }
-
-    function showFinalSummary() {
-      const totalDistance = appState.totalDistanceMeters + appState.currentLegDistance;
-      const totalSeconds = appState.totalElapsedSeconds + appState.currentLegElapsedSeconds;
-      const totalSteps = Math.round(totalDistance / 0.75);
-
-      DOM.finalDestinationName.textContent = 'You reached ' + (appState.finalDestination?.label || 'your destination');
-      DOM.finalTotalDistance.textContent = toKm(totalDistance);
-      DOM.finalTotalTime.textContent = formatDuration(totalSeconds);
-      DOM.finalTotalSteps.textContent = totalSteps.toLocaleString();
-      DOM.finalLegCount.textContent = String(appState.completedLegs.length + 1);
-      renderCompletedLegsList();
-
-      DOM.finalSummaryModal.classList.remove('hidden');
-      DOM.finalSummaryModal.classList.add('flex');
-    }
-
-    function hideFinalSummary() {
-      DOM.finalSummaryModal.classList.add('hidden');
-      DOM.finalSummaryModal.classList.remove('flex');
-    }
-
-    function onLegComplete() {
-      const legSummary = {
-        start: appState.currentLegStart,
-        end: appState.currentLegEnd,
-        distance: appState.currentLegDistance,
-        time: appState.currentLegElapsedSeconds,
-        steps: Math.round(appState.currentLegDistance / 0.75)
-      };
-
-      appState.completedLegs.push(legSummary);
-      appState.totalDistanceMeters += appState.currentLegDistance;
-      appState.totalElapsedSeconds += appState.currentLegElapsedSeconds;
-
-      appState.keepDestinationForNextLeg = DOM.keepDestinationToggle.checked;
-      hideArrivalModal();
-
-      const reachedFinalDestination = appState.finalDestination && appState.currentLegEnd && appState.currentLegEnd.coords[0] === appState.finalDestination.coords[0] && appState.currentLegEnd.coords[1] === appState.finalDestination.coords[1];
-
-      if (reachedFinalDestination && appState.finalDestination) {
-        showFinalSummary();
-        return;
-      }
-
-      if (appState.keepDestinationForNextLeg && appState.finalDestination) {
-        appState.currentLegStart = appState.currentLegEnd;
-        appState.startCoords = appState.currentLegEnd.coords;
-        appState.startAddress = appState.currentLegEnd.label;
-        DOM.inputStart.value = appState.startAddress;
-
-        appState.currentLegEnd = { ...appState.finalDestination };
-        appState.endCoords = appState.finalDestination.coords;
-        appState.endAddress = appState.finalDestination.label;
-        DOM.inputEnd.value = appState.finalDestination.label;
-
-        appState.walkedPathCoords = [appState.currentLegStart.coords];
-        appState.currentLegDistance = 0;
-        appState.currentLegElapsedSeconds = 0;
-        appState.startTime = null;
-        appState.pausedDuration = 0;
-        appState.paused = false;
-        appState.tracking = false;
-        appState.arrived = false;
-        clearInterval(appState.timerInterval);
-
-        if (startMarker) map.removeLayer(startMarker);
-        startMarker = L.marker(appState.currentLegStart.coords, { icon: createStartIcon() }).addTo(map);
-        startMarker.bindPopup('<b>Start:</b> ' + appState.currentLegStart.label);
-
-        DOM.tripLegIndicator.textContent = String(++appState.legNumber);
-        routePolyline.setLatLngs([]);
-        walkedPolyline.setLatLngs([]);
-        DOM.btnStop.classList.add('hidden');
-        DOM.btnStartPause.textContent = 'Start Walk';
-        updateDestinationBadges();
-      } else {
-        resetPlanner();
-      }
-    }
-
-    function resetPlanner() {
-      clearInterval(appState.timerInterval);
-      if (appState.watchId && navigator.geolocation) navigator.geolocation.clearWatch(appState.watchId);
-
-      appState.startCoords = null;
-      appState.endCoords = null;
-      appState.startAddress = '';
-      appState.endAddress = '';
-      appState.currentLegStart = null;
-      appState.currentLegEnd = null;
-      appState.finalDestination = null;
-      appState.currentLegDistance = 0;
-      appState.currentLegElapsedSeconds = 0;
-      appState.totalDistanceMeters = 0;
-      appState.totalElapsedSeconds = 0;
-      appState.completedLegs = [];
-      appState.keepDestinationForNextLeg = false;
-      appState.tracking = false;
-      appState.paused = false;
-      appState.arrived = false;
-      appState.startTime = null;
-      appState.walkedPathCoords = [];
-      appState.legNumber = 1;
-
-      DOM.inputStart.value = '';
+    // Event Listeners
+    DOM.btnCalcRoute.addEventListener('click', calculateRoute);
+    DOM.btnStartPause.addEventListener('click', () => state.tracking ? pauseWalk() : startWalk());
+    DOM.btnStop.addEventListener('click', stopWalk);
+    DOM.btnNextLeg.addEventListener('click', nextLeg);
+    DOM.btnClearEnd.addEventListener('click', () => {
+      state.endCoords = null;
       DOM.inputEnd.value = '';
-      DOM.tripLegIndicator.textContent = '1';
-      DOM.btnStartPause.textContent = 'Start Walk';
-      DOM.btnStop.classList.add('hidden');
-      DOM.routeSummaryCard.classList.add('hidden');
-      walkedPolyline.setLatLngs([]);
-      routePolyline.setLatLngs([]);
-      updateDestinationBadges();
-
-      if (startMarker) map.removeLayer(startMarker);
       if (endMarker) map.removeLayer(endMarker);
-      startMarker = null;
-      endMarker = null;
-    }
-
-    DOM.btnCalcRoute.addEventListener('click', calculateWalkingRoute);
-    DOM.btnClearEnd.addEventListener('click', clearEndLocation);
-
-    DOM.btnStartPause.addEventListener('click', () => {
-      if (!appState.tracking) {
-        startWalk();
-      } else if (appState.paused) {
-        resumeWalk();
-      } else {
-        pauseWalk();
-      }
+      DOM.routeSummaryCard.classList.add('hidden');
+    });
+    DOM.btnModalNext.addEventListener('click', nextLeg);
+    DOM.btnModalFinish.addEventListener('click', () => {
+      DOM.arrivalModal.classList.add('hidden');
+      DOM.arrivalModal.classList.remove('flex');
+      location.reload();
     });
 
-    DOM.btnStop.addEventListener('click', () => {
-      clearInterval(appState.timerInterval);
-      if (appState.watchId && navigator.geolocation) navigator.geolocation.clearWatch(appState.watchId);
-      appState.tracking = false;
-      appState.paused = false;
-      DOM.btnStop.classList.add('hidden');
-      DOM.btnStartPause.textContent = 'Start Walk';
-    });
-
-    DOM.btnNextLeg.addEventListener('click', () => {
-      if (!appState.endCoords) return;
-      const nextStart = [...appState.endCoords];
-      appState.startCoords = nextStart;
-      appState.startAddress = appState.endAddress || 'Previous destination';
-      DOM.inputStart.value = appState.startAddress;
-      if (startMarker) map.removeLayer(startMarker);
-      startMarker = L.marker(nextStart, { icon: createStartIcon() }).addTo(map);
-      startMarker.bindPopup('<b>Start:</b> ' + appState.startAddress);
-      appState.legNumber += 1;
-      DOM.tripLegIndicator.textContent = appState.legNumber;
-    });
-
-    DOM.btnModalNextLeg.addEventListener('click', onLegComplete);
-    DOM.btnModalNewDestination.addEventListener('click', () => {
-      appState.keepDestinationForNextLeg = false;
-      DOM.keepDestinationToggle.checked = false;
-      hideArrivalModal();
-      clearEndLocation();
-    });
-
-    DOM.btnFinalSave.addEventListener('click', () => {
-      appState.finalTripSaved = true;
-      hideFinalSummary();
-    });
-
-    DOM.btnFinalNewTrip.addEventListener('click', () => {
-      hideFinalSummary();
-      resetPlanner();
-    });
-
+    // Initialize
     initMap();
-    updateDestinationBadges();
+    updateCurrentGoal();
   </script>
 </body>
 </html>
